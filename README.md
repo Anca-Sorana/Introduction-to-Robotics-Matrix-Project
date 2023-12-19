@@ -25,3 +25,8 @@ In this game, players use an LCD for navigating the menu and viewing key game de
 * Basic sound effects and thematic music.
 * Gameplay on a 16x16 matrix with concepts like visibility/fog of war or 'rooms'.
 * Intuitive and progressively challenging gameplay.
+
+### Setup
+<p align="center" width="100%">
+    <img src="IMG_9394.jpg" width="500"/>
+</p>
