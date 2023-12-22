@@ -650,17 +650,17 @@ void mainMenu() {           //print the menu and its details
 
   if (info) {
     lcd.setCursor(0, 0);
-    lcd.print("Explode walls!");
+    lcd.print("Explode walls");
     lcd.setCursor(0, 1);
-    lcd.print("Use joystick!");
-    //    if (currentMillis - lastCharacterDisplay > characterDelay) {
-    //      lcd.scrollDisplayLeft();
-    //      character--;
-    //      if (character < 0) {
-    //        character = lenAboutMessage;
-    //      }
-    //      lastCharacterDisplay = currentMillis;
-    //    }
+    lcd.print("Use joystick");
+//    if (currentMillis - lastCharacterDisplay > characterDelay) {
+//      lcd.scrollDisplayLeft();
+//      character--;
+//      if (character < 0) {
+//        character = lenAboutMessage;
+//      }
+//      lastCharacterDisplay = currentMillis;
+//    }
   }
 }
 void updateMenu() {     //change every flag depending on where we are in the menu and what we choose (this is only called when we press the button)
@@ -668,6 +668,7 @@ void updateMenu() {     //change every flag depending on where we are in the men
     if (index == 0) {
       lcd.clear();
       gameStarted = true;
+      gameStatus = true;
       menuOn = false;
       settings = false;
       about = false;
@@ -676,6 +677,7 @@ void updateMenu() {     //change every flag depending on where we are in the men
       level = 1;
       levelStartTime = currentMillis;
       score = 0;
+      Serial.print(1);
     } else if (index == 1) {
       gameStarted = false;
       menuOn = false;
