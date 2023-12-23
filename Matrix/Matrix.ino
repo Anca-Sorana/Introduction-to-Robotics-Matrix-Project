@@ -12,12 +12,14 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 const byte LCD_Backlight = 3;
 
 // Pin configuration
-const int dinPin = 12;
-const int clockPin = 11;
+const int dinPin = 13;
+const int clockPin = 12;
 const int loadPin = 10;
 const int xPin = A0;      // Joystick X-axis
 const int yPin = A1;      // Joystick Y-axis
 const int buttonPin = 2;  // Button pin
+
+const int buzzerPin = 11;
 
 // LED matrix configuration
 const byte matrixSize = 8;                                 // Size of the LED matrix
@@ -25,14 +27,14 @@ LedControl lc = LedControl(dinPin, clockPin, loadPin, 1);  // Initialize LedCont
 byte matrixBrightness = 2;                                 // Brightness level of the matrix
 
 // Player variables
-byte xPosPlayer = 0;
-byte yPosPlayer = 0;
-byte xLastPosPlayer = 0;
-byte yLastPosPlayer = 0;
-int delayLedPlayer = 300;  // Delay for LED player update
-byte xPositionRandom;
-byte yPositionRandom;
-int lastDebounceDelayPlayer;
+byte xPosPlayer = 0;          //current row for player
+byte yPosPlayer = 0;          //current column for player
+byte xLastPosPlayer = 0;      //last row for player
+byte yLastPosPlayer = 0;      //last column for player
+int delayLedPlayer = 300;     // Delay for LED player update
+byte xPositionRandom;         // random row for wall
+byte yPositionRandom;         // random column for wall
+int lastDebounceDelayPlayer;  // last time the player led was on/off
 
 // Joystick thresholds
 int minThreshold = 200;
@@ -42,21 +44,25 @@ unsigned long long lastMoved = 0;
 
 // Button variables
 byte pressInterval = 50;
-int lastPressed = 0;
-;
+int lastPressed = 0;  // last time the button was pressed
 byte buttonState = LOW;
-int lastReading;
-int currentMillis;
-int reading;
+int lastReading;    //last value read from the button
+int currentMillis;  //current time
+int reading;        // current value for button
 
-// Game status variables
+// Game variables
 bool matrixChanged = true;  // Flag for matrix update
 bool gameStatus = true;     // Game running status
 int nrWalls = 0;            // Current number of walls
-int level = 1;
-const int levelMax = 3;
-byte nrWallsMax;
+int nrWallsMax;             // Max number of walls for the current level
+int level = 1;              // begin with level 1
+const int levelMax = 3;     // no of maximum levels
+byte nrTotalLives = 3;      // total number of lives
+byte nrLives = 3;           // number of lives remained in the game
 byte nrWallsMaxArray[levelMax] = { 0 };
+int score = 0;                    // score for the current game
+int gameOverMessageDelay = 2000;  //debounce delay for when the game is finished (either won or lost)
+int gameOverStartTime;            //time when the game finnished
 
 // Bomb variables
 byte bombActive = false;
@@ -66,6 +72,9 @@ int lastChangedBomb;
 int bombLightInterval = 200;
 int xPosBomb;
 int yPosBomb;
+int directions[][2] = { { 0, 0 }, { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };  //possible direction for bomb explosion
+int count = 0;                                                                 //no of bomb exploded
+int directionsLen = 5;                                                         //length of directions array
 
 // Animation variables
 int lastAnimation = 0;
@@ -75,11 +84,14 @@ int currentAnimation = 0;
 // Matrix state array
 byte matrix[matrixSize][matrixSize] = { 0 };
 
-const char mainMenuArray[4][15] = { "1. Start Game", "2. Settings", "3. About", "4. Info"};
-const char settingsArray[4][20] = { "1.LCD Intensity", "2.Mtx Intensity", "3.Sound", "4.Exit" };
+// All menu posibilities
+int index = 0;  // index to help us naavigate through menu
+const char mainMenuArray[4][15] = { "1. Start Game", "2. Settings", "3. About", "4. Info" };
+const char settingsArray[5][20] = { "1.LCD Intensity", "2.Mtx Intensity", "3.Sound", "4.Reset", "5.Exit" };
 int lenMenu = 4;
-int lenMenuSettings = 4;
+int lenMenuSettings = 5;
 
+// Flags for each menu category
 byte gameStarted = false;
 byte menuOn = true;
 byte settings = false;
@@ -87,44 +99,60 @@ byte about = false;
 byte lcdBright = false;
 byte matrixBright = false;
 byte sound = false;
-byte soundActive = false;
 byte info = false;
+byte reset = false;
+byte resetActive = false;
 
-int index = 0;
-int percent;
-int messageBeginDelay = 3000;
-int character = 50;
-int lenAboutMessage = 50;
-int characterDelay = 500;
-int lastCharacterDisplay;
-byte nrTotalLives = 3;
-byte nrLives = 3;
-byte levelAnimationDelay = 1500;
-byte levelStartTime;
+byte gameStartedIndex = 0;
+byte settingsIndex = 1;
+byte aboutIndex = 2;
+byte infoIndex = 3;
+byte lcdBrightIndex = 0;
+byte matrixBrightIndex = 1;
+byte soundIndex = 2;
+byte resetIndex = 3;
+byte exitIndex = 4;
 
-int lcdBrightnessAdress = 0;
-int matrixBrightnessAdress = 1;
-int soundAdress = 2;
+int messageBeginDelay = 3000;  // debounce time for begin message
 
+//Variables for About message
+int character = 50;        // character index used for scrolling message
+int lenAboutMessage = 50;  // length about message
+int characterDelay = 500;  // delay for scrolling
+int lastCharacterDisplay;  // last time a character was shown (scrolling text)
+
+// Eeprom address
+int lcdBrightnessAdress = 0;     //adress in eeprom for lcd brightness
+int matrixBrightnessAdress = 1;  //adress in eeprom for matrix brightness
+int soundAdress = 2;             //adress in eeprom for sound (on or off)
+
+// Variables used to save the values saved in EEPROM
 int lcdBrightnessValue;
 int matrixBrightnessValue;
+byte soundActive = false;
 
-int lcdBrightnessLevel[] = { 0, 51, 77, 102, 128, 153, 179, 204, 230, 255 };
-int matrixBrightnessLevel[] = { 0, 1, 3, 5, 7, 9, 11, 13, 15 };
+// Buzzer variables
+int frequencies[] = { 100, 200, 300, 400, 500, 600, 700, 800 };  //possible values for buzzer
+int frequencyJoystick = 500;                                     //frequency used for buzzer when moving the joystick
+int buzzerStartTime;                                             // when the buzzer starts to ring
+int buzzerDelay = 50;                                            // debounce delay for buzzer
 
-int directions[][2] = { { 0, 0 }, { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };
-int count = 0;
-int directionsLen = 5;
+//variables for brightness settings
+int lcdBrightnessLen = 10;                                                    //length of lcdBrightnessLevel array
+int matrixBrightnessLen = 9;                                                  //length of matrixBrightnessLevel array
+int percentLcd;                                                               //brightness percent for lcd
+int percentMatrix;                                                            //brightness percent for matrix
+int progressBarCollumns;                                                      //no of blocks for progress bar
+int lcdBrightnessLevel[] = { 0, 51, 77, 102, 128, 153, 179, 204, 230, 255 };  //possible values for lcd brightness
+int matrixBrightnessLevel[] = { 0, 1, 3, 5, 7, 9, 11, 13, 15 };               //possible values for matrix brightness
+int minBrightnessLcd = 0;
+int maxBrightnessLcd = 255;
+int minBrightnessMatrix = 0;
+int maxBrightnessMatrix = 15;
+int minPercent = 0;
+int maxPercent = 100;
 
-int lcdBrightnessLen = 10;
-int matrixBrightnessLen = 9;
-int percentLcd;
-int percentMatrix;
-int progressBarCollumns;
-int score = 0;
-
-int gameOverMessageDelay = 2000;
-int gameOverStartTime;
+//characters for the lcd
 byte speaker[] = {
   0b00001,
   0b00011,
@@ -199,8 +227,7 @@ const uint8_t levelsAnimation[][8] = {
     0b00011000,
     0b00011000,
     0b00011000,
-    0b11111111
-  },
+    0b11111111 },
   { 0b00111000,
     0b01111100,
     0b01101100,
@@ -208,8 +235,7 @@ const uint8_t levelsAnimation[][8] = {
     0b00011000,
     0b00110000,
     0b01111110,
-    0b11111111
-  },
+    0b11111111 },
   { 0b00111100,
     0b01111110,
     0b01000110,
@@ -217,8 +243,7 @@ const uint8_t levelsAnimation[][8] = {
     0b00011110,
     0b01000110,
     0b01111110,
-    0b00111100
-  }
+    0b00111100 }
 };
 
 const uint8_t ledAnimation[][8] = {
@@ -229,8 +254,7 @@ const uint8_t ledAnimation[][8] = {
     0b00100100,
     0b00011000,
     0b00111100,
-    0b00111100
-  }
+    0b00111100 }
 };
 byte upArrow[8] = {
   B00100,
@@ -284,8 +308,7 @@ const uint8_t images[][8] = {
     0b00000000,
     0b00000000,
     0b00000000,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b00000000,
     0b00000000,
@@ -293,8 +316,7 @@ const uint8_t images[][8] = {
     0b00011000,
     0b00000000,
     0b00000000,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b00000000,
     0b00111100,
@@ -302,8 +324,7 @@ const uint8_t images[][8] = {
     0b00111100,
     0b00111100,
     0b00000000,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b01111110,
     0b01111110,
@@ -311,8 +332,7 @@ const uint8_t images[][8] = {
     0b01111110,
     0b01111110,
     0b01111110,
-    0b00000000
-  },
+    0b00000000 },
   { 0b11111111,
     0b11111111,
     0b11111111,
@@ -320,8 +340,7 @@ const uint8_t images[][8] = {
     0b11111111,
     0b11111111,
     0b11111111,
-    0b11111111
-  },
+    0b11111111 },
   { 0b00000000,
     0b01111110,
     0b01111110,
@@ -329,8 +348,7 @@ const uint8_t images[][8] = {
     0b01111110,
     0b01111110,
     0b01111110,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b00000000,
     0b00111100,
@@ -338,8 +356,7 @@ const uint8_t images[][8] = {
     0b00111100,
     0b00111100,
     0b00000000,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b00000000,
     0b00000000,
@@ -347,8 +364,7 @@ const uint8_t images[][8] = {
     0b00011000,
     0b00000000,
     0b00000000,
-    0b00000000
-  },
+    0b00000000 },
   { 0b00000000,
     0b00000000,
     0b00000000,
@@ -356,12 +372,12 @@ const uint8_t images[][8] = {
     0b00000000,
     0b00000000,
     0b00000000,
-    0b00000000
-  }
+    0b00000000 }
 };
 const int imagesLen = sizeof(images) / 8;
 
-void clearMatrix() {            //turn off all leds
+//function to clear the matrix - turn of all the leds
+void clearMatrix() {  //turn off all leds
   for (int row = 0; row < matrixSize; row++) {
     for (int col = 0; col < matrixSize; col++) {
       matrix[row][col] = 0;
@@ -370,7 +386,9 @@ void clearMatrix() {            //turn off all leds
   updateMatrix();
 }
 
-void handleGameOver() {  //display a certain animantion when the player loses teh game and restart the game
+//function for when the game is finished (either won or lost)
+void handleGameOver() {  //display a certain animantion when the player looses or wins game and restart the game
+  //reinitialize all the threshold and delay variables (sometimes the program changes their values without me modifing them)
   minThreshold = 200;
   maxThreshold = 600;
   delayLedPlayer = 300;
@@ -379,6 +397,7 @@ void handleGameOver() {  //display a certain animantion when the player loses te
   bombExplodingTime = 2000;
   bombLightInterval = 200;
   delayAnimation = 100;
+  //display an animation when the game ended
   if (currentMillis - lastAnimation > delayAnimation) {
     lastAnimation = currentMillis;
     displayImage(images[currentAnimation]);
@@ -388,10 +407,21 @@ void handleGameOver() {  //display a certain animantion when the player loses te
       //gameStarted = false;
       currentAnimation = 0;
       clearMatrix();
-      nrWalls = 0;
-      xPosPlayer = 0;
-      yPosPlayer = 0;
     }
+  }
+
+  //show message on lcd when the game ended for 2 seconds
+  if (currentMillis - gameOverStartTime > gameOverMessageDelay) {
+    //after 2 seconds we reset everything and show the main menu again
+    gameStarted = false;  // to know that the game is not running anymore
+    menuOn = true;        // go back to main menu
+    index = 0;            // show the first option on the menu
+    nrWalls = 0;          //reset the number of walls for the next game
+    // reset the posiyion for player
+    xPosPlayer = 0;
+    yPosPlayer = 0;
+    lcd.clear();
+    clearMatrix();
   }
 }
 
@@ -401,12 +431,17 @@ void setup() {
   randomSeed(analogRead(2));
   lc.shutdown(0, false);  // Enable display
   lc.clearDisplay(0);     // Clear display
-  //nrWallsMax = random(32, 48); // Initialize maximum walls
+  // for each level will be a certain number of walls
   nrWallsMaxArray[0] = random(0, 10);   // Initialize maximum walls
   nrWallsMaxArray[1] = random(10, 20);  // Initialize maximum walls
   nrWallsMaxArray[2] = random(20, 30);  // Initialize maximum walls
+
+  //initialize the lcd
   lcd.begin(16, 2);
   pinMode(LCD_Backlight, OUTPUT);
+
+  //initialize the buzzer
+  pinMode(buzzerPin, OUTPUT);
 
   //create characters for lcd
   lcd.createChar(1, heart);
@@ -417,7 +452,6 @@ void setup() {
   lcd.createChar(6, block);
   lcd.createChar(7, upArrow);
   lcd.createChar(8, downArrow);
-  //lcd.createChar(9, leftArrow);
 
   //show welcome message
   lcd.setCursor(4, 0);
@@ -429,21 +463,25 @@ void setup() {
   lcd.setCursor(8, 1);
   lcd.write(1);
 
-  // EEPROM.update(lcdBrightnessAdress, lcdBrightnessLen - 1);
-  // EEPROM.update(matrixBrightnessAdress, 1);
-  // EEPROM.update(soundAdress, 0);
+  // lcdBrightnessValue = EEPROM.read(lcdBrightnessAdress);
+  // matrixBrightnessValue = EEPROM.read(matrixBrightnessAdress);
+  // soundActive = EEPROM.read(soundAdress);
 
-  lcdBrightnessValue = EEPROM.read(lcdBrightnessAdress);
-  matrixBrightnessValue = EEPROM.read(matrixBrightnessAdress);
-  soundActive = EEPROM.read(soundAdress);
-  percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], 0, 255, 0, 100);
-  percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], 0, 15, 0, 100);
+  readEepromValues();
+
+  //into eeprom are saved the positions of the values in the brightness arrays
+  //in order to find out the percent for every value of those arrays we need to map the values
+  percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], minBrightnessLcd, maxBrightnessLcd, minPercent, maxPercent);
+  percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], minBrightnessMatrix, maxBrightnessMatrix, minPercent, maxPercent);
+
+  //set the brightness for the matrix and the lcd
   analogWrite(LCD_Backlight, lcdBrightnessLevel[lcdBrightnessValue]);
   lc.setIntensity(0, matrixBrightnessLevel[matrixBrightnessValue]);  // Set brightness
 }
 
 void loop() {
   if (millis() > messageBeginDelay) {  //don't start till the welcome message disappers
+    // reinitialize the threshold and delay values
     minThreshold = 200;
     maxThreshold = 600;
     delayLedPlayer = 300;
@@ -452,114 +490,149 @@ void loop() {
     bombExplodingTime = 2000;
     bombLightInterval = 200;
     delayAnimation = 100;
-    currentMillis = millis();
-    reading = digitalRead(buttonPin);
-
-    if (!gameStarted) {   //when we are not playing, just show menu on lcd
+    gameOverMessageDelay = 2000;
+    currentMillis = millis();                             //current time
+    reading = digitalRead(buttonPin);                     //current state of the button
+    if (currentMillis - buzzerStartTime > buzzerDelay) {  // stop the buzzer if it rang for more than 50 milliseconds
+      noTone(buzzerPin);
+    }
+    if (!gameStarted) {  //when we are not playing, just show menu on lcd
       mainMenu();
-    } else if (gameStarted) {   //wehn we start the game
-      if (!gameStatus) {  //if the player lost
+    } else if (gameStarted) {  //when we start the game
+      if (!gameStatus) {       //if the player finnished the game (either lost or won)
         handleGameOver();
-        if (currentMillis - gameOverStartTime > gameOverMessageDelay) {  //show message on lcd when you lose
-          gameStarted = false;
-          lcd.clear();
-          clearMatrix();
-        }
-        //gameStarted = false;
       } else {  //the game can begin again
-        handleLives();
-        handleGameRunning();      //while the game is on
-        int var = checkMatrix();    //verify how many walls we still have to take down
+        if (level <= levelMax) {
+          handleLives();
+          handleGameRunning();  //while the game is on
+        } else {
+          gameStatus = false;  // the game is no longer running
+          //show winning message
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Congratulations!");
+          lcd.setCursor(0, 1);
+          lcd.print("You won!");
+          clearMatrix();
+          gameOverStartTime = currentMillis;  //save the time the game ends so we know when to stop the winning message from showing
+        }
+        int var = checkMatrix();  //verify how many walls we still have to take down
         if (var == 0) {
-          if (level <= levelMax) {
-            level++;
-            nrWalls = 0;
-            levelStartTime = currentMillis;
-          } else {
-            gameStatus = false;
-            // gameStarted = false;
+          if (level < levelMax) {  // if the max level is not reached
+            level++;               // increase the level number
+            nrWalls = 0;           // reinitialize the no of walls for that level
+          } else {                 // when the maximul level no is reached
+            gameStatus = false;    // the game is no longer running
+            //show winning message
             lcd.clear();
-            menuOn = true;
+            lcd.setCursor(0, 0);
+            lcd.print("Congratulations!");
+            lcd.setCursor(0, 1);
+            lcd.print("You won!");
             clearMatrix();
+            gameOverStartTime = currentMillis;  //save the time the game ends so we know when to stop the winning message from showing
           }
         }
       }
     }
   }
 }
-void updateEepromValues() {     //update all the data from the eeprom
+
+void updateEepromValues() {  //update all the data from the eeprom
   EEPROM.update(lcdBrightnessAdress, lcdBrightnessValue);
   EEPROM.update(matrixBrightnessAdress, matrixBrightnessValue);
   EEPROM.update(soundAdress, soundActive);
+
+  // Set brightness for lcd and matrix
+  analogWrite(LCD_Backlight, lcdBrightnessLevel[lcdBrightnessValue]);
+  lc.setIntensity(0, matrixBrightnessLevel[matrixBrightnessValue]);
+
+  percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], minBrightnessLcd, maxBrightnessLcd, minPercent, maxPercent);
+  percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], minBrightnessMatrix, maxBrightnessMatrix, minPercent, maxPercent);
 }
 
-void readEepromValues() {       //read all the data from the eeprom
+void readEepromValues() {  //read all the data from the eeprom
   lcdBrightnessValue = EEPROM.read(lcdBrightnessAdress);
   matrixBrightnessValue = EEPROM.read(matrixBrightnessAdress);
   soundActive = EEPROM.read(soundAdress);
 }
 
-void drawProgressBar(int max) {     //bar for brightness
+void drawProgressBar(int max) {  //bar for brightness
   for (int i = 0; i < max; i++) {
     lcd.setCursor(2 + i, 1);
     lcd.write(6);
   }
 }
-int checkMatrix() {                 //check if the matrix still have leds on
+int checkMatrix() {  //check if the matrix still have leds on
   int verif = 0;
   for (int row = 0; row < matrixSize; row++) {
     for (int col = 0; col < matrixSize; col++) {
       if (matrix[row][col]) {
-        verif++;
+        if (row == xPosPlayer && col == yPosPlayer) {  //verify to not count the player's position
+          continue;
+        } else {
+          verif++;
+        }
       }
     }
   }
   return verif;
 }
-void handleLives() {              //print the remaining lives, the score and the level
+void handleLives() {  //print the remaining lives, the score and the level
+  //print the lives remaining
   lcd.setCursor(0, 0);
   lcd.print("Lives: ");
   for (int i = 0; i < nrLives; i++) {
     lcd.setCursor(7 + i, 0);
     lcd.write(1);
   }
-
+  //print empty hearts for the lost lives
   for (int i = 0; i < nrTotalLives - nrLives; i++) {
     lcd.setCursor(7 + i + nrLives, 0);
     lcd.write(3);
   }
+  //print the current score
   lcd.setCursor(0, 1);
   lcd.print("Score: ");
   lcd.setCursor(7, 1);
   lcd.print(score);
+
+  //print the current level
   lcd.setCursor(11, 1);
   lcd.print("Lvl: ");
   lcd.setCursor(15, 1);
   lcd.print(level);
 }
-void mainMenu() {           //print the menu and its details
+
+void mainMenu() {  //print the menu and its details
   if (currentMillis - lastMoved > moveInterval) {
     // game logic
-    updatePositions();          // Update the position of the LED based on joystick input
+    updatePositions();          // Update the options shown on the lcd based on joystick input
     lastMoved = currentMillis;  // Update the time of the last move
   }
   if (reading != lastReading) {  //check if the reading from the button is different than the last time
     lastPressed = currentMillis;
   }
-  if ((currentMillis - lastPressed) > pressInterval) {  // when the button in pressed then we place a bomb at that location
+  if ((currentMillis - lastPressed) > pressInterval) {  // when the button in pressed then we select an option from the menu
     if (reading != buttonState) {
       buttonState = reading;
       if (buttonState == LOW) {
         //Serial.print(1);
-        updateMenu();
+        if (soundActive) {  // if the sound is on then we start the buzzer
+          tone(buzzerPin, frequencyJoystick);
+          buzzerStartTime = currentMillis;
+        }
+        updateMenu();  // update what menu or what option is showed based on the selection made
       }
     }
   }
   lastReading = reading;
+
+  //depaending on the menu, submenu or option we selected, there will be shown different things on the lcd
   if (menuOn) {
     settings = false;
     lcd.setCursor(0, 0);
-    lcd.print("Main Menu    ");
+    lcd.print("Main Menu ");
     lcd.setCursor(10, 0);
     lcd.write(7);
     lcd.setCursor(11, 0);
@@ -570,7 +643,7 @@ void mainMenu() {           //print the menu and its details
   if (settings) {
     menuOn = false;
     lcd.setCursor(0, 0);
-    lcd.print("Settings    ");
+    lcd.print("Settings");
     lcd.setCursor(10, 0);
     lcd.write(7);
     lcd.setCursor(11, 0);
@@ -621,9 +694,7 @@ void mainMenu() {           //print the menu and its details
     lcd.setCursor(9, 1);
     lcd.print("OFF");
     lcd.setCursor(10, 0);
-    lcd.write(9);
-    lcd.setCursor(11, 0);
-    lcd.write(10);
+    lcd.write(2);
     if (soundActive) {
       lcd.setCursor(5, 1);
       lcd.write(5);
@@ -653,19 +724,36 @@ void mainMenu() {           //print the menu and its details
     lcd.print("Explode walls");
     lcd.setCursor(0, 1);
     lcd.print("Use joystick");
-//    if (currentMillis - lastCharacterDisplay > characterDelay) {
-//      lcd.scrollDisplayLeft();
-//      character--;
-//      if (character < 0) {
-//        character = lenAboutMessage;
-//      }
-//      lastCharacterDisplay = currentMillis;
-//    }
+    //    if (currentMillis - lastCharacterDisplay > characterDelay) {
+    //      lcd.scrollDisplayLeft();
+    //      character--;
+    //      if (character < 0) {
+    //        character = lenAboutMessage;
+    //      }
+    //      lastCharacterDisplay = currentMillis;
+    //    }
+  }
+  if (reset) {
+    settings = false;
+    lcd.setCursor(0, 0);
+    lcd.print("Are you sure?");
+    lcd.setCursor(0, 1);
+    lcd.print("   YES ");
+    lcd.setCursor(9, 1);
+    lcd.print("NO");
+    if (resetActive) {
+      lcd.setCursor(6, 1);
+      lcd.write(5);
+    } else {
+      lcd.setCursor(11, 1);
+      lcd.write(5);
+    }
   }
 }
-void updateMenu() {     //change every flag depending on where we are in the menu and what we choose (this is only called when we press the button)
+void updateMenu() {  //change every flag depending on where we are in the menu and what we choose (this is only called when we press the button)
   if (menuOn) {
-    if (index == 0) {
+    if (index == gameStartedIndex) {  //start game
+      // set the other flags to false
       lcd.clear();
       gameStarted = true;
       gameStatus = true;
@@ -673,27 +761,29 @@ void updateMenu() {     //change every flag depending on where we are in the men
       settings = false;
       about = false;
       info = false;
+
+      //initialize the variables for the game
       nrLives = nrTotalLives;
       level = 1;
-      levelStartTime = currentMillis;
       score = 0;
-      Serial.print(1);
-    } else if (index == 1) {
+
+    } else if (index == settingsIndex) {  // settings
+      lcd.clear();
       gameStarted = false;
       menuOn = false;
       about = false;
       index = 0;
       settings = true;
       info = false;
-      //Serial.print(settings);
-    } else if (index == 2) {
+    } else if (index == aboutIndex) {  // about
+      lcd.clear();
       gameStarted = false;
       menuOn = false;
       settings = false;
       about = true;
       info = false;
-    }
-    else if (index == 3) {
+    } else if (index == infoIndex) {  // info
+      lcd.clear();
       gameStarted = false;
       menuOn = false;
       settings = false;
@@ -702,8 +792,8 @@ void updateMenu() {     //change every flag depending on where we are in the men
     }
   }
 
-  else if (settings) {
-    if (index == 0) {
+  else if (settings) {              // if we are in the settings menu
+    if (index == lcdBrightIndex) {  // if we press on lcd brightness we go to the lcd brightness submenu
       lcd.clear();
       lcdBright = true;
       matrixBright = false;
@@ -711,9 +801,9 @@ void updateMenu() {     //change every flag depending on where we are in the men
       settings = false;
       sound = false;
       readEepromValues();
-      //updateLcdBright();
+      reset = false;
     }
-    if (index == 1) {
+    if (index == matrixBrightIndex) {  // if we press on matrix brightness - we go to the matrix brightness submenu
       lcd.clear();
       lcdBright = false;
       matrixBright = true;
@@ -722,15 +812,25 @@ void updateMenu() {     //change every flag depending on where we are in the men
       sound = false;
       displayLed(ledAnimation[0]);
       readEepromValues();
+      reset = false;
     }
-    if (index == 2) {
+    if (index == soundIndex) {  //if we press on sound - we go to the sound submenu
       lcd.clear();
       sound = true;
       lcdBright = false;
       matrixBright = false;
       settings = false;
+      reset = false;
     }
-    if (index == 3) {
+    if (index == resetIndex) {  //if we press on reset - we go to the reset submenu
+      lcd.clear();
+      lcdBright = false;
+      matrixBright = false;
+      settings == false;
+      sound = false;
+      reset = true;
+    }
+    if (index == exitIndex) {  // if we press on exit - we go to the main menu
       lcd.clear();
       lcdBright = false;
       matrixBright = false;
@@ -738,8 +838,9 @@ void updateMenu() {     //change every flag depending on where we are in the men
       settings == false;
       index = 0;
       sound = false;
+      reset = false;
     }
-  } else if (lcdBright) {
+  } else if (lcdBright) {  // after we chose the brightness value, press the button and save the lcd brightness value
     lcd.clear();
     settings = true;
     matrixBright = false;
@@ -747,7 +848,8 @@ void updateMenu() {     //change every flag depending on where we are in the men
     lcdBright = false;
     index = 0;
     sound = false;
-  } else if (matrixBright) {
+    reset = false;
+  } else if (matrixBright) {  // after we chose the brightness value, press the button and save the matrix brightness value
     lcd.clear();
     settings = true;
     matrixBright = false;
@@ -755,16 +857,18 @@ void updateMenu() {     //change every flag depending on where we are in the men
     lcdBright = false;
     index = 0;
     sound = false;
+    reset = false;
     clearMatrix();
-  } else if (sound) {
+  } else if (sound) {  // after we chose the sound option, press the button and save the sound option
     lcd.clear();
     settings = true;
     matrixBright = false;
     menuOn = false;
     lcdBright = false;
     sound = false;
+    reset = false;
     index = 0;
-  } else if (about) {
+  } else if (about) {  //exit about and go to main menu
     lcd.clear();
     settings = false;
     matrixBright = false;
@@ -774,9 +878,9 @@ void updateMenu() {     //change every flag depending on where we are in the men
     sound = false;
     index = 0;
     info = false;
+    reset = false;
     character = 35;
-  }
-  else if (info) {
+  } else if (info) {  // exit info and go to main menu
     lcd.clear();
     settings = false;
     matrixBright = false;
@@ -785,7 +889,25 @@ void updateMenu() {     //change every flag depending on where we are in the men
     about = false;
     sound = false;
     info = false;
+    reset = false;
     index = 0;
+  } else if (reset) {  // after decinding if you want to reset or not press the button and go back to settings menu
+    lcd.clear();
+    settings = true;
+    matrixBright = false;
+    menuOn = false;
+    lcdBright = false;
+    sound = false;
+    reset = false;
+    index = 0;
+    if (resetActive) {
+      resetActive = false;
+      lcdBrightnessValue = lcdBrightnessLen - 1;
+      matrixBrightnessValue = 1;
+      soundActive = 0;
+      updateEepromValues();
+      readEepromValues();
+    }
   }
 }
 
@@ -814,6 +936,8 @@ void updateMatrix() {
   bombExplodingTime = 2000;
   bombLightInterval = 200;
   delayAnimation = 100;
+
+  //update the matrix everytime a led changes state
   for (int row = 0; row < matrixSize; row++) {
     for (int col = 0; col < matrixSize; col++) {
       lc.setLed(0, row, col, matrix[row][col]);
@@ -846,7 +970,7 @@ void updatePositions() {  // when we use the joystick
   bombExplodingTime = 2000;
   bombLightInterval = 200;
   delayAnimation = 100;
-  //for every movement on the x and y axis we increment or decrement the values for brightness, change from on to off (sound) and chnage the position of the player
+  //for every movement on the x and y axis we increment or decrement the values for brightness, change from on to off (sound) and change the position of the player
   int xValue = analogRead(xPin);
   int yValue = analogRead(yPin);
   // Store the last positions of the LED
@@ -854,79 +978,101 @@ void updatePositions() {  // when we use the joystick
   yLastPosPlayer = yPosPlayer;
   // Update xPos based on joystick movement (X-axis)
   if (xValue > maxThreshold) {
-    if (gameStarted) {
+    // if the sound is on start the buzzer
+    if (soundActive) {
+      tone(buzzerPin, frequencyJoystick);
+      buzzerStartTime = currentMillis;
+    }
+    if (gameStarted) {  // when the game is running we use the joystick to navigate trough the matrix
       if (xPosPlayer > 0) {
         xPosPlayer--;
         if (matrix[xPosPlayer][yPosPlayer]) {
           xPosPlayer++;
         }
       }
-    } else if (sound) {
+    } else if (sound) {  //when we are inside the sound submenu move left and right to change the option and save the current value
       soundActive = false;
       lcd.setCursor(5, 1);
       lcd.print(" ");
       updateEepromValues();
-    } else if (lcdBright) {
+    } else if (lcdBright) {  //when we are inside the lcd brightness submenu move left and right to change the option and save the current value
       if (lcdBrightnessValue < lcdBrightnessLen - 1) {
         lcdBrightnessValue++;
         updateEepromValues();
-        percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], 0, 255, 0, 100);
+        percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], minBrightnessLcd, maxBrightnessLcd, minPercent, maxPercent);
         analogWrite(LCD_Backlight, lcdBrightnessLevel[lcdBrightnessValue]);
       }
-    } else if (matrixBright) {
+    } else if (matrixBright) {  //when we are inside the matrix brightness submenu move left and right to change the option and save the current value
       if (matrixBrightnessValue < matrixBrightnessLen - 1) {
         matrixBrightnessValue++;
         updateEepromValues();
-        percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], 0, 15, 0, 100);
+        percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], minBrightnessMatrix, maxBrightnessMatrix, minPercent, maxPercent);
         lc.setIntensity(0, matrixBrightnessLevel[matrixBrightnessValue]);  // Set brightness
       }
+    } else if (reset) {  //when we are inside the reset submenu move left and right to change the option and save the current value
+      resetActive = false;
+      lcd.setCursor(5, 1);
+      lcd.print(" ");
     }
   }
   if (xValue < minThreshold) {
-    if (gameStarted) {
+    if (soundActive) {  // if the sound is on start the buzzer
+      tone(buzzerPin, frequencyJoystick);
+      buzzerStartTime = currentMillis;
+    }
+    if (gameStarted) {  // when the game is running we use the joystick to navigate trough the matrix
       if (xPosPlayer < matrixSize - 1) {
         xPosPlayer++;
         if (matrix[xPosPlayer][yPosPlayer]) {
           xPosPlayer--;
         }
       }
-    } else if (sound) {
+    } else if (sound) {  //when we are inside the sound submenu move left and right to change the option and save the current value
       soundActive = true;
       lcd.setCursor(12, 1);
       lcd.print(" ");
       updateEepromValues();
     } else if (lcdBright) {
-      if (lcdBrightnessValue > 0) {
+      if (lcdBrightnessValue > 0) {  //when we are inside the lcd brightness submenu move left and right to change the option and save the current value
         lcdBrightnessValue--;
         updateEepromValues();
         lcd.setCursor(lcdBrightnessValue + 2, 1);
         lcd.print(" ");
+        // percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], minBrightnessLcd, maxBrightnessLcd, minPercent, maxPercent);
         percentLcd = map(lcdBrightnessLevel[lcdBrightnessValue], 0, 255, 0, 100);
         analogWrite(LCD_Backlight, lcdBrightnessLevel[lcdBrightnessValue]);
       }
-    } else if (matrixBright) {
+    } else if (matrixBright) {  //when we are inside the matrix brightness submenu move left and right to change the option and save the current value
       if (matrixBrightnessValue > 0) {
         matrixBrightnessValue--;
         updateEepromValues();
         lcd.setCursor(matrixBrightnessValue + 2, 1);
         lcd.print(" ");
-        percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], 0, 15, 0, 100);
+        percentMatrix = map(matrixBrightnessLevel[matrixBrightnessValue], minBrightnessMatrix, maxBrightnessMatrix, minPercent, maxPercent);
         lc.setIntensity(0, matrixBrightnessLevel[matrixBrightnessValue]);  // Set brightness
       }
+    } else if (reset) {  //when we are inside the reset submenu move left and right to change the option and save the current value
+      resetActive = true;
+      lcd.setCursor(11, 1);
+      lcd.print(" ");
     }
   }
   if (yValue > maxThreshold) {
-    if (menuOn) {
+    if (soundActive) {  // if the sound is on start the buzzer
+      tone(buzzerPin, frequencyJoystick);
+      buzzerStartTime = currentMillis;
+    }
+    if (menuOn) {  //when we are inside the main menu move up and down to select one option
       if (index < lenMenu - 1) {
         index++;
         lcd.clear();
       }
-    } else if (settings) {
+    } else if (settings) {  //when we are inside the settings submenu move up and down to select one option
       if (index < lenMenuSettings - 1) {
         index++;
         lcd.clear();
       }
-    } else if (yPosPlayer > 0 && gameStarted) {
+    } else if (yPosPlayer > 0 && gameStarted) {  // when the game is running we use the joystick to navigate trough the matrix
       yPosPlayer--;
       if (matrix[xPosPlayer][yPosPlayer]) {
         yPosPlayer++;
@@ -935,17 +1081,21 @@ void updatePositions() {  // when we use the joystick
   }
   // Update xPos based on joystick movement (Y-axis)
   if (yValue < minThreshold) {
-    if (menuOn) {
+    if (soundActive) {  // if the sound is on start the buzzer
+      tone(buzzerPin, frequencyJoystick);
+      buzzerStartTime = currentMillis;
+    }
+    if (menuOn) {  //when we are inside the main menu move up and down to select one option
       if (index > 0) {
         index--;
         lcd.clear();
       }
-    } else if (settings) {
+    } else if (settings) {  //when we are inside the settings submenu move up and down to select one option
       if (index > 0) {
         index--;
         lcd.clear();
       }
-    } else if (yPosPlayer < matrixSize - 1 && gameStarted) {
+    } else if (yPosPlayer < matrixSize - 1 && gameStarted) {  // when the game is running we use the joystick to navigate trough the matrix
       yPosPlayer++;
       if (matrix[xPosPlayer][yPosPlayer]) {
         yPosPlayer--;
@@ -967,6 +1117,7 @@ void placeBomb() {  //bomb placed and we save the coordinates for that bomb
 
   bombActive = true;
   startBomb = currentMillis;
+  index = 0;
 }
 
 
@@ -997,7 +1148,7 @@ void explode() {  //when the time goes off for the bomb we need to verifi which 
           //gameStarted = false;
           //lcd.clear();
           menuOn = true;
-          clearMatrix();
+          //clearMatrix();
         }
       }
     }
@@ -1022,7 +1173,6 @@ void handleGameRunning() {
   bombExplodingTime = 2000;
   bombLightInterval = 300;
   delayAnimation = 100;
-  levelAnimationDelay = 1500;
   nrWallsMax = nrWallsMaxArray[level - 1];
   // Game running logic here
   if (nrWalls <= nrWallsMax) {  //generate the walls of the game
@@ -1059,8 +1209,16 @@ void handleGameRunning() {
       if (currentMillis - lastChangedBomb > bombLightInterval) {
         matrix[xPosBomb][yPosBomb] = !matrix[xPosBomb][yPosBomb];
         lastChangedBomb = currentMillis;
+
+        // if the sound is on, start the buzzer everytime the bomb lights up
+        if (soundActive) {
+          if (matrix[xPosBomb][yPosBomb]) {
+            tone(buzzerPin, frequencies[index++]);
+          } else {
+            noTone(buzzerPin);
+          }
+        }
         matrixChanged = true;
-        //Serial.print(1);
       }
     } else if (bombActive) {  //when the bomb is ready to explode
       bombActive = false;
