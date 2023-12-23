@@ -30,7 +30,7 @@ In this game, players use an LCD for navigating the menu and viewing key game de
 <p align="center" width="100%">
     <img src="IMG_9394.jpg" width="600"/>
     <br>
-    <img src="Scematic.png" width="600"/>
+    <img src="Schematic.png" width="600"/>
 </p>
 
 And here you have a short [demo](https://youtu.be/vH-kKDZTB2I) of how everything works.
